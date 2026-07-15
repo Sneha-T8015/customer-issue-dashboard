@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if issue else 'New' }} Issue - Issue Tracker{% endblock %}
+
+{% block content %}
+<div class="form-card">
+    <h2>{{ 'Edit Issue #' ~ issue.id if issue else 'Create New Issue' }}</h2>
+    <form method="POST">
+        <div class="form-group">
+            <label for="title">Title</label>
+            <input type="text" id="title" name="title" required value="{{ issue.title if issue else '' }}" placeholder="Brief summary of the issue">
+        </div>
+
+        <div class="form-group">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" required placeholder="Detailed description of the issue...">{{ issue.description if issue else '' }}</textarea>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="customer_name">Customer Name</label>
+                <input type="text" id="customer_name" name="customer_name" required value="{{ issue.customer_name if issue else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="customer_email">Customer Email</label>
+                <input type="email" id="customer_email" name="customer_email" required value="{{ issue.customer_email if issue else '' }}">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="status">Status</label>
+                <select id="status" name="status">
+                    {% for s in statuses %}
+                    <option value="{{ s }}" {% if issue and issue.status == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="priority">Priority</label>
+                <select id="priority" name="priority">
+                    {% for p in priorities %}
+                    <option value="{{ p }}" {% if issue and issue.priority == p %}selected{% elif not issue and p == 'Medium' %}selected{% endif %}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="category">Category</label>
+            <select id="category" name="category">
+                {% for c in categories %}
+                <option value="{{ c }}" {% if issue and issue.category == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="resolution_notes">Resolution Notes</label>
+            <textarea id="resolution_notes" name="resolution_notes" placeholder="Notes about how this was resolved (optional)">{{ issue.resolution_notes if issue else '' }}</textarea>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">{{ 'Update' if issue else 'Create' }} Issue</button>
+            <a href="{{ url_for('issue_detail', issue_id=issue.id) if issue else url_for('index') }}" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

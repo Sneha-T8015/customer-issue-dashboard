@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Analytics - Issue Tracker{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:1.5rem">Analytics</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-number">{{ total }}</div>
+        <div class="stat-label">Total Issues</div>
+    </div>
+    <div class="stat-card stat-open">
+        <div class="stat-number">{{ last_30_days }}</div>
+        <div class="stat-label">Last 30 Days</div>
+    </div>
+    <div class="stat-card stat-progress">
+        <div class="stat-number">{{ last_7_days }}</div>
+        <div class="stat-label">Last 7 Days</div>
+    </div>
+</div>
+
+<div class="analytics-grid">
+    <div class="chart-card">
+        <h3>Issues by Status</h3>
+        <canvas id="statusChart"></canvas>
+    </div>
+    <div class="chart-card">
+        <h3>Issues by Priority</h3>
+        <canvas id="priorityChart"></canvas>
+    </div>
+    <div class="chart-card">
+        <h3>Issues by Category</h3>
+        <canvas id="categoryChart"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const statusData = {{ by_status | tojson }};
+    const priorityData = {{ by_priority | tojson }};
+    const categoryData = {{ by_category | tojson }};
+
+    const COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#6b7280', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
+
+    function makeChart(canvasId, data, type) {
+        const labels = data.map(d => d[0]);
+        const values = data.map(d => d[1]);
+        const colors = labels.map((_, i) => COLORS[i % COLORS.length]);
+
+        if (values.length === 0) return;
+
+        new Chart(document.getElementById(canvasId), {
+            type: type,
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: type === 'doughnut' ? colors : colors.map(c => c + '99'),
+                    borderColor: colors,
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: type === 'doughnut' }
+                }
+            }
+        });
+    }
+
+    makeChart('statusChart', statusData, 'doughnut');
+    makeChart('priorityChart', priorityData, 'bar');
+    makeChart('categoryChart', categoryData, 'bar');
+</script>
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Issue Tracker{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom:1.5rem">Customer Issue Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.total }}</div>
+        <div class="stat-label">Total Issues</div>
+    </div>
+    <div class="stat-card stat-open">
+        <div class="stat-number">{{ stats.open }}</div>
+        <div class="stat-label">Open</div>
+    </div>
+    <div class="stat-card stat-progress">
+        <div class="stat-number">{{ stats.in_progress }}</div>
+        <div class="stat-label">In Progress</div>
+    </div>
+    <div class="stat-card stat-resolved">
+        <div class="stat-number">{{ stats.resolved }}</div>
+        <div class="stat-label">Resolved</div>
+    </div>
+    <div class="stat-card stat-closed">
+        <div class="stat-number">{{ stats.closed }}</div>
+        <div class="stat-label">Closed</div>
+    </div>
+</div>
+
+<form class="filters" method="GET" action="{{ url_for('index') }}">
+    <div class="filter-group">
+        <label for="search">Search</label>
+        <input type="text" id="search" name="search" placeholder="Title, customer, email..." value="{{ search }}">
+    </div>
+    <div class="filter-group">
+        <label for="status">Status</label>
+        <select id="status" name="status">
+            <option value="">All</option>
+            {% for s in statuses %}
+            <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="priority">Priority</label>
+        <select id="priority" name="priority">
+            <option value="">All</option>
+            {% for p in priorities %}
+            <option value="{{ p }}" {% if priority_filter == p %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="category">Category</label>
+        <select id="category" name="category">
+            <option value="">All</option>
+            {% for c in categories %}
+            <option value="{{ c }}" {% if category_filter == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group" style="flex:0">
+        <label>&nbsp;</label>
+        <div style="display:flex;gap:0.5rem">
+            <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+            <a href="{{ url_for('index') }}" class="btn btn-outline btn-sm">Clear</a>
+        </div>
+    </div>
+</form>
+
+{% if issues %}
+<div class="issue-table">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Customer</th>
+                <th>Category</th>
+                <th>Priority</th>
+                <th>Status</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for issue in issues %}
+            <tr>
+                <td>#{{ issue.id }}</td>
+                <td><a href="{{ url_for('issue_detail', issue_id=issue.id) }}">{{ issue.title }}</a></td>
+                <td>{{ issue.customer_name }}</td>
+                <td>{{ issue.category }}</td>
+                <td><span class="badge badge-{{ issue.priority|lower }}">{{ issue.priority }}</span></td>
+                <td><span class="badge badge-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span></td>
+                <td>{{ issue.created_at.strftime('%b %d, %Y') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No issues found.</p>
+    <a href="{{ url_for('create_issue') }}" class="btn btn-primary">Create your first issue</a>
+</div>
+{% endif %}
+{% endblock %}
