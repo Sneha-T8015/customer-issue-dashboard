@@ -11,7 +11,7 @@
     </div>
     <div class="detail-meta">
         <span class="badge badge-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span>
-        <span class="badge badge-{{ issue.priority|lower }}">{{ issue.priority }}</span>
+        <span class="badge badge-priority badge-{{ issue.priority|lower }}">{{ issue.priority }}</span>
         <span class="badge badge-category">{{ issue.category }}</span>
         {% if issue.assigned_to %}
         <span class="badge badge-assigned">{{ issue.assigned_to }}</span>
@@ -45,7 +45,7 @@
                 <select name="assigned_to" class="inline-select">
                     <option value="">Unassigned</option>
                     {% for agent in agents %}
-                    <option value="{{ agent.id }}" {% if issue.assigned_to == agent.name %}selected{% endif %}>{{ agent.name }} ({{ agent.role }})</option>
+                    <option value="{{ agent.id }}" {% if issue.assigned_to == agent.name %}selected{% endif %}>{{ agent.name }}</option>
                     {% endfor %}
                 </select>
                 <button type="submit" class="btn btn-primary btn-sm">Assign</button>
@@ -62,8 +62,8 @@
 
     <div class="detail-section">
         <h3>Dates</h3>
-        <p><strong>Created:</strong> {{ issue.created_at.strftime('%B %d, %Y at %H:%M') if issue.created_at is not string else issue.created_at }}</p>
-        <p><strong>Updated:</strong> {{ issue.updated_at.strftime('%B %d, %Y at %H:%M') if issue.updated_at is not string else issue.updated_at }}</p>
+        <p><strong>Created:</strong> {{ issue.created_at[:16] if issue.created_at else '—' }}</p>
+        <p><strong>Updated:</strong> {{ issue.updated_at[:16] if issue.updated_at else '—' }}</p>
     </div>
 
     <div class="detail-actions">
@@ -85,9 +85,7 @@
             {% if comment.is_internal %}
             <span class="badge badge-internal">Internal Note</span>
             {% endif %}
-            <span class="comment-date">
-                {{ comment.created_at.strftime('%b %d, %Y at %H:%M') if comment.created_at is not string else comment.created_at }}
-            </span>
+            <span class="comment-date">{{ comment.created_at[:16] if comment.created_at else '' }}</span>
         </div>
         <div class="comment-body">
             <p>{{ comment.body }}</p>

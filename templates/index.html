@@ -51,7 +51,7 @@
         </select>
     </div>
     <div class="filter-group">
-        <label for="category">Category</label>
+        <label for="category">Department</label>
         <select id="category" name="category">
             <option value="">All</option>
             {% for c in categories %}
@@ -76,7 +76,7 @@
                 <th>ID</th>
                 <th>Title</th>
                 <th>Customer</th>
-                <th>Category</th>
+                <th>Department</th>
                 <th>Priority</th>
                 <th>Status</th>
                 <th>Assigned To</th>
@@ -89,11 +89,11 @@
                 <td class="ticket-id">{{ issue.id[:8] }}</td>
                 <td><a href="{{ url_for('issue_detail', issue_id=issue.id) }}">{{ issue.title }}</a></td>
                 <td>{{ issue.customer_name }}</td>
-                <td>{{ issue.category }}</td>
-                <td><span class="badge badge-{{ issue.priority|lower }}">{{ issue.priority }}</span></td>
+                <td><span class="badge badge-category">{{ issue.category }}</span></td>
+                <td><span class="badge badge-priority badge-{{ issue.priority|lower }}">{{ issue.priority }}</span></td>
                 <td><span class="badge badge-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span></td>
                 <td>{{ issue.assigned_to if issue.assigned_to else '—' }}</td>
-                <td>{% if issue.created_at %}{{ issue.created_at.strftime('%b %d, %Y') if issue.created_at is string else issue.created_at }}{% endif %}</td>
+                <td>{{ issue.created_at[:16] if issue.created_at else '—' }}</td>
             </tr>
             {% endfor %}
         </tbody>

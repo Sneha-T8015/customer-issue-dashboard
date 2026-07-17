@@ -16,10 +16,10 @@
         </div>
 
         <div class="form-group">
-            <label for="role">Role</label>
-            <select id="role" name="role">
-                {% for r in agent_roles %}
-                <option value="{{ r }}" {% if agent and agent.role == r %}selected{% elif not agent and r == 'Agent' %}selected{% endif %}>{{ r }}</option>
+            <label for="department_id">Department</label>
+            <select id="department_id" name="department_id">
+                {% for d in departments %}
+                <option value="{{ d }}" {% if agent and agent.role == d %}selected{% elif not agent and loop.first %}selected{% endif %}>{{ d }}</option>
                 {% endfor %}
             </select>
         </div>

@@ -6,7 +6,7 @@
     <h2>{{ 'Edit Ticket #' ~ issue.id[:8] if issue else 'Create New Ticket' }}</h2>
     <form method="POST">
         <div class="form-group">
-            <label for="title">Title</label>
+            <label for="title">Subject</label>
             <input type="text" id="title" name="title" required value="{{ issue.title if issue else '' }}" placeholder="Brief summary of the issue" maxlength="300">
         </div>
 
@@ -18,7 +18,7 @@
         <div class="form-row">
             <div class="form-group">
                 <label for="customer_name">Customer Name</label>
-                <input type="text" id="customer_name" name="customer_name" required value="{{ issue.customer_name if issue else '' }}">
+                <input type="text" id="customer_name" name="customer_name" value="{{ issue.customer_name if issue else '' }}">
             </div>
             <div class="form-group">
                 <label for="customer_email">Customer Email</label>
@@ -28,29 +28,30 @@
 
         <div class="form-row">
             <div class="form-group">
-                <label for="status">Status</label>
-                <select id="status" name="status">
-                    {% for s in statuses %}
-                    <option value="{{ s }}" {% if issue and issue.status == s %}selected{% elif not issue and s == 'Open' %}selected{% endif %}>{{ s }}</option>
+                <label for="priority">Priority</label>
+                <select id="priority" name="priority">
+                    {% for p in priorities %}
+                    <option value="{{ p }}" {% if issue and issue.priority == p %}selected{% elif not issue and p == 'P3' %}selected{% endif %}>{{ p }}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="form-group">
-                <label for="priority">Priority</label>
-                <select id="priority" name="priority">
-                    {% for p in priorities %}
-                    <option value="{{ p }}" {% if issue and issue.priority == p %}selected{% elif not issue and p == 'Medium' %}selected{% endif %}>{{ p }}</option>
+                <label for="category">Department</label>
+                <select id="category" name="category">
+                    {% for c in categories %}
+                    <option value="{{ c }}" {% if issue and issue.category == c %}selected{% endif %}>{{ c }}</option>
                     {% endfor %}
                 </select>
             </div>
         </div>
 
+        {% if issue %}
         <div class="form-row">
             <div class="form-group">
-                <label for="category">Category</label>
-                <select id="category" name="category">
-                    {% for c in categories %}
-                    <option value="{{ c }}" {% if issue and issue.category == c %}selected{% endif %}>{{ c }}</option>
+                <label for="status">Status</label>
+                <select id="status" name="status">
+                    {% for s in statuses %}
+                    <option value="{{ s }}" {% if issue.status == s %}selected{% endif %}>{{ s }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -59,7 +60,7 @@
                 <select id="assigned_to" name="assigned_to">
                     <option value="">Unassigned</option>
                     {% for agent in agents %}
-                    <option value="{{ agent.name }}" {% if issue and issue.assigned_to == agent.name %}selected{% endif %}>{{ agent.name }} ({{ agent.role }})</option>
+                    <option value="{{ agent.id }}" {% if issue.assigned_to == agent.name %}selected{% endif %}>{{ agent.name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -69,6 +70,7 @@
             <label for="resolution_notes">Resolution Notes</label>
             <textarea id="resolution_notes" name="resolution_notes" placeholder="Notes about how this was resolved (optional)">{{ issue.resolution_notes if issue else '' }}</textarea>
         </div>
+        {% endif %}
 
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">{{ 'Update' if issue else 'Create' }} Ticket</button>

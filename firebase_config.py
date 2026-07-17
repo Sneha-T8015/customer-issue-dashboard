@@ -16,6 +16,7 @@ Firestore collections
 import os
 import json
 import logging
+from pathlib import Path
 
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -44,39 +45,34 @@ def init_firebase():
     if _db is not None:
         return _db
 
-    if not firebase_admin._apps:
-        cred_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
-        cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-        local_key = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "serviceAccountKey.json",
-        )
+    cred_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
+    cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    base_dir = Path(__file__).resolve().parent
+    local_key = base_dir / "serviceAccountKey.json"
 
-        try:
-            if cred_json:
-                cred_dict = json.loads(cred_json)
-                cred = credentials.Certificate(cred_dict)
-                firebase_admin.initialize_app(cred)
-                logger.info("Firebase initialised from FIREBASE_CREDENTIALS_JSON")
+    cred = None
+    if cred_json:
+        cred_dict = json.loads(cred_json)
+        cred = credentials.Certificate(cred_dict)
+    elif cred_path and os.path.isfile(cred_path):
+        cred = credentials.Certificate(cred_path)
+    elif local_key.exists():
+        cred = credentials.Certificate(str(local_key))
 
-            elif cred_path and os.path.isfile(cred_path):
-                cred = credentials.Certificate(cred_path)
-                firebase_admin.initialize_app(cred)
-                logger.info("Firebase initialised from %s", cred_path)
+    try:
+        if cred is not None:
+            if firebase_admin._apps:
+                for app_name in list(firebase_admin._apps.keys()):
+                    firebase_admin.delete_app(firebase_admin.get_app(app_name))
+            firebase_admin.initialize_app(cred)
+            logger.info("Firebase initialised with service account credentials")
+        elif not firebase_admin._apps:
+            firebase_admin.initialize_app()
+            logger.info("Firebase initialised with default credentials")
 
-            elif os.path.isfile(local_key):
-                cred = credentials.Certificate(local_key)
-                firebase_admin.initialize_app(cred)
-                logger.info("Firebase initialised from %s", local_key)
-
-            else:
-                # Fall back to ADC / emulator
-                firebase_admin.initialize_app()
-                logger.info("Firebase initialised with default credentials")
-
-        except Exception:
-            logger.exception("Failed to initialise Firebase Admin SDK")
-            raise
+    except Exception:
+        logger.exception("Failed to initialise Firebase Admin SDK")
+        raise
 
     _db = firestore.client()
     return _db
