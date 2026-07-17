@@ -32,10 +32,11 @@ def init_firebase():
     """
     Initialise the Firebase Admin SDK.
 
-    Credential resolution order:
-      1. FIREBASE_CREDENTIALS_JSON env var (inline JSON string)
-      2. GOOGLE_APPLICATION_CREDENTIALS env var (file path)
-      3. Application Default Credentials (ADC)
+    Credential resolution order (first match wins):
+      1. FIREBASE_CREDENTIALS_JSON env var   – inline JSON string
+      2. GOOGLE_APPLICATION_CREDENTIALS env var – file path
+      3. ./serviceAccountKey.json            – local key file
+      4. Application Default Credentials (ADC)
 
     Returns the Firestore client.
     """
@@ -46,6 +47,10 @@ def init_firebase():
     if not firebase_admin._apps:
         cred_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
         cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        local_key = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "serviceAccountKey.json",
+        )
 
         try:
             if cred_json:
@@ -58,6 +63,11 @@ def init_firebase():
                 cred = credentials.Certificate(cred_path)
                 firebase_admin.initialize_app(cred)
                 logger.info("Firebase initialised from %s", cred_path)
+
+            elif os.path.isfile(local_key):
+                cred = credentials.Certificate(local_key)
+                firebase_admin.initialize_app(cred)
+                logger.info("Firebase initialised from %s", local_key)
 
             else:
                 # Fall back to ADC / emulator
