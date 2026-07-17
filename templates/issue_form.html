@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if issue else 'New' }} Issue - Issue Tracker{% endblock %}
+{% block title %}{{ 'Edit' if issue else 'New' }} Ticket - Helpdesk{% endblock %}
 
 {% block content %}
 <div class="form-card">
-    <h2>{{ 'Edit Issue #' ~ issue.id if issue else 'Create New Issue' }}</h2>
+    <h2>{{ 'Edit Ticket #' ~ issue.id[:8] if issue else 'Create New Ticket' }}</h2>
     <form method="POST">
         <div class="form-group">
             <label for="title">Title</label>
-            <input type="text" id="title" name="title" required value="{{ issue.title if issue else '' }}" placeholder="Brief summary of the issue">
+            <input type="text" id="title" name="title" required value="{{ issue.title if issue else '' }}" placeholder="Brief summary of the issue" maxlength="300">
         </div>
 
         <div class="form-group">
@@ -31,7 +31,7 @@
                 <label for="status">Status</label>
                 <select id="status" name="status">
                     {% for s in statuses %}
-                    <option value="{{ s }}" {% if issue and issue.status == s %}selected{% endif %}>{{ s }}</option>
+                    <option value="{{ s }}" {% if issue and issue.status == s %}selected{% elif not issue and s == 'Open' %}selected{% endif %}>{{ s }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -45,13 +45,24 @@
             </div>
         </div>
 
-        <div class="form-group">
-            <label for="category">Category</label>
-            <select id="category" name="category">
-                {% for c in categories %}
-                <option value="{{ c }}" {% if issue and issue.category == c %}selected{% endif %}>{{ c }}</option>
-                {% endfor %}
-            </select>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="category">Category</label>
+                <select id="category" name="category">
+                    {% for c in categories %}
+                    <option value="{{ c }}" {% if issue and issue.category == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="assigned_to">Assign To</label>
+                <select id="assigned_to" name="assigned_to">
+                    <option value="">Unassigned</option>
+                    {% for agent in agents %}
+                    <option value="{{ agent.name }}" {% if issue and issue.assigned_to == agent.name %}selected{% endif %}>{{ agent.name }} ({{ agent.role }})</option>
+                    {% endfor %}
+                </select>
+            </div>
         </div>
 
         <div class="form-group">
@@ -60,7 +71,7 @@
         </div>
 
         <div class="form-actions">
-            <button type="submit" class="btn btn-primary">{{ 'Update' if issue else 'Create' }} Issue</button>
+            <button type="submit" class="btn btn-primary">{{ 'Update' if issue else 'Create' }} Ticket</button>
             <a href="{{ url_for('issue_detail', issue_id=issue.id) if issue else url_for('index') }}" class="btn btn-outline">Cancel</a>
         </div>
     </form>

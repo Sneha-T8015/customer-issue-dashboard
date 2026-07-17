@@ -1,13 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Issue #{{ issue.id }} - Issue Tracker{% endblock %}
+{% block title %}Ticket {{ issue.id[:8] }} - Helpdesk{% endblock %}
 
 {% block content %}
 <div class="detail-card">
-    <h1>{{ issue.title }}</h1>
+    <div class="detail-header">
+        <div>
+            <span class="ticket-id-label">Ticket #{{ issue.id[:8] }}</span>
+            <h1>{{ issue.title }}</h1>
+        </div>
+    </div>
     <div class="detail-meta">
         <span class="badge badge-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span>
         <span class="badge badge-{{ issue.priority|lower }}">{{ issue.priority }}</span>
-        <span class="badge" style="background:#f3e8ff;color:#6b21a8">{{ issue.category }}</span>
+        <span class="badge badge-category">{{ issue.category }}</span>
+        {% if issue.assigned_to %}
+        <span class="badge badge-assigned">{{ issue.assigned_to }}</span>
+        {% endif %}
     </div>
 
     <div class="detail-section">
@@ -21,6 +29,30 @@
         <p><strong>Email:</strong> {{ issue.customer_email }}</p>
     </div>
 
+    <div class="detail-section">
+        <h3>Quick Actions</h3>
+        <div class="quick-actions">
+            <form method="POST" action="{{ url_for('update_status', issue_id=issue.id) }}" class="inline-form">
+                <select name="status" class="inline-select">
+                    {% for s in statuses %}
+                    <option value="{{ s }}" {% if issue.status == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary btn-sm">Update Status</button>
+            </form>
+
+            <form method="POST" action="{{ url_for('assign_ticket', issue_id=issue.id) }}" class="inline-form">
+                <select name="assigned_to" class="inline-select">
+                    <option value="">Unassigned</option>
+                    {% for agent in agents %}
+                    <option value="{{ agent.id }}" {% if issue.assigned_to == agent.name %}selected{% endif %}>{{ agent.name }} ({{ agent.role }})</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary btn-sm">Assign</button>
+            </form>
+        </div>
+    </div>
+
     {% if issue.resolution_notes %}
     <div class="detail-section">
         <h3>Resolution Notes</h3>
@@ -30,16 +62,73 @@
 
     <div class="detail-section">
         <h3>Dates</h3>
-        <p><strong>Created:</strong> {{ issue.created_at.strftime('%B %d, %Y at %H:%M') }}</p>
-        <p><strong>Updated:</strong> {{ issue.updated_at.strftime('%B %d, %Y at %H:%M') }}</p>
+        <p><strong>Created:</strong> {{ issue.created_at.strftime('%B %d, %Y at %H:%M') if issue.created_at is not string else issue.created_at }}</p>
+        <p><strong>Updated:</strong> {{ issue.updated_at.strftime('%B %d, %Y at %H:%M') if issue.updated_at is not string else issue.updated_at }}</p>
     </div>
 
     <div class="detail-actions">
-        <a href="{{ url_for('edit_issue', issue_id=issue.id) }}" class="btn btn-primary">Edit Issue</a>
-        <form method="POST" action="{{ url_for('delete_issue', issue_id=issue.id) }}" onsubmit="return confirm('Are you sure you want to delete this issue?')">
+        <a href="{{ url_for('edit_issue', issue_id=issue.id) }}" class="btn btn-primary">Edit Ticket</a>
+        <form method="POST" action="{{ url_for('delete_issue', issue_id=issue.id) }}" onsubmit="return confirm('Are you sure you want to delete this ticket?')">
             <button type="submit" class="btn btn-danger">Delete</button>
         </form>
         <a href="{{ url_for('index') }}" class="btn btn-outline">Back to Dashboard</a>
+    </div>
+</div>
+
+<div class="comments-section">
+    <h2>Comments &amp; Activity ({{ comments|length }})</h2>
+
+    {% for comment in comments %}
+    <div class="comment-card {% if comment.is_internal %}comment-internal{% endif %}">
+        <div class="comment-header">
+            <strong>{{ comment.author }}</strong>
+            {% if comment.is_internal %}
+            <span class="badge badge-internal">Internal Note</span>
+            {% endif %}
+            <span class="comment-date">
+                {{ comment.created_at.strftime('%b %d, %Y at %H:%M') if comment.created_at is not string else comment.created_at }}
+            </span>
+        </div>
+        <div class="comment-body">
+            <p>{{ comment.body }}</p>
+        </div>
+        <form method="POST" action="{{ url_for('delete_comment', issue_id=issue.id, comment_id=comment.id) }}" class="comment-delete">
+            <button type="submit" class="btn btn-outline btn-sm" onclick="return confirm('Delete this comment?')">Delete</button>
+        </form>
+    </div>
+    {% endfor %}
+
+    {% if not comments %}
+    <p class="no-comments">No comments yet.</p>
+    {% endif %}
+
+    <div class="comment-form-card">
+        <h3>Add Comment</h3>
+        <form method="POST" action="{{ url_for('add_comment', issue_id=issue.id) }}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="author">Your Name</label>
+                    <input type="text" id="author" name="author" required placeholder="Agent name">
+                </div>
+                <div class="form-group">
+                    <label for="author_email">Your Email (optional)</label>
+                    <input type="email" id="author_email" name="author_email" placeholder="agent@company.com">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="body">Comment</label>
+                <textarea id="body" name="body" required rows="4" placeholder="Write your comment..."></textarea>
+            </div>
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="is_internal" value="1">
+                    Internal note (not visible to customer)
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Post Comment</button>
+            </div>
+        </form>
     </div>
 </div>
 {% endblock %}

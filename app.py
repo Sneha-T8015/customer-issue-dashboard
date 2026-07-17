@@ -1,210 +1,487 @@
-from datetime import datetime, date, timezone, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from flask_sqlalchemy import SQLAlchemy
-import os
+"""
+app.py
+------
+Flask application entry-point.
 
+Routes
+------
+  GET  /api/init                         – seed departments + SLA policies
+  POST /api/tickets/create               – create ticket with auto SLA + round-robin
+  GET  /api/tickets/assigned/<agent_id>  – agent dashboard with remaining SLA time
+  GET  /api/tickets                      – list / filter tickets
+  GET  /api/tickets/<ticket_id>          – single ticket detail
+  PATCH /api/tickets/<ticket_id>         – update ticket fields
+  DELETE /api/tickets/<ticket_id>        – delete a ticket
+  GET  /api/departments                  – list departments
+  GET  /api/sla/<department_id>          – SLA policies for a department
+  GET  /api/stats                        – aggregate counts
+  GET  /api/agents                       – list agents
+  POST /api/agents                       – create agent
+
+The SLA escalation background worker is started once at module import
+time and runs every 60 seconds.
+"""
+
+import logging
+import os
+from datetime import datetime, timezone
+
+from flask import Flask, jsonify, request
+
+# --- Firebase & services ---------------------------------------------------
+from firebase_config import init_firebase, get_db, seed_defaults, PRIORITY_CODES
+from services import (
+    DepartmentService,
+    SLAPolicyService,
+    TicketService,
+    AgentService,
+)
+from sla import (
+    get_sla_policy,
+    compute_deadlines,
+    start_escalation_worker,
+)
+from round_robin import pick_agent
+from models import TicketModel, AgentModel, utcnow, serialise
+from validators import (
+    validate_ticket_create,
+    validate_agent_create,
+    ValidationError,
+)
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Flask app
+# ---------------------------------------------------------------------------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key-change-me")
 
-database_url = os.environ.get("DATABASE_URL", "sqlite:///issues.db")
-if database_url and database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# ---------------------------------------------------------------------------
+# Bootstrap: connect to Firestore, seed data, start background worker
+# ---------------------------------------------------------------------------
 
-db = SQLAlchemy(app)
-
-
-class Issue(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text, nullable=False)
-    customer_name = db.Column(db.String(100), nullable=False)
-    customer_email = db.Column(db.String(150), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default="Open")
-    priority = db.Column(db.String(10), nullable=False, default="Medium")
-    category = db.Column(db.String(50), nullable=False, default="General")
-    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    resolution_notes = db.Column(db.Text, default="")
-
-    STATUSES = ["Open", "In Progress", "Resolved", "Closed"]
-    PRIORITIES = ["Low", "Medium", "High", "Critical"]
-    CATEGORIES = [
-        "General", "Billing", "Technical", "Bug Report",
-        "Feature Request", "Account", "Shipping", "Other"
-    ]
+@app.before_request
+def _ensure_bootstrap():
+    """
+    Lazily run one-time bootstrap on the very first request so that
+    ``import app`` does not require network access (useful in tests).
+    """
+    if getattr(app, "_bootstrapped", False):
+        return
+    try:
+        db = init_firebase()
+        seed_defaults(db)
+        start_escalation_worker(interval_seconds=60)
+        app._bootstrapped = True
+    except Exception:
+        logger.exception("Bootstrap failed – app may be non-functional")
 
 
-@app.context_processor
-def inject_now():
-    return {"now": datetime.now(timezone.utc)}
+# ---------------------------------------------------------------------------
+# Error handlers
+# ---------------------------------------------------------------------------
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Not found"}), 404
 
 
-@app.route("/")
-def index():
-    status_filter = request.args.get("status", "")
-    priority_filter = request.args.get("priority", "")
-    category_filter = request.args.get("category", "")
-    search = request.args.get("search", "").strip()
+@app.errorhandler(500)
+def server_error(e):
+    logger.exception("Internal server error")
+    return jsonify({"error": "Internal server error"}), 500
 
-    query = Issue.query
 
-    if status_filter:
-        query = query.filter(Issue.status == status_filter)
-    if priority_filter:
-        query = query.filter(Issue.priority == priority_filter)
-    if category_filter:
-        query = query.filter(Issue.category == category_filter)
-    if search:
-        query = query.filter(
-            db.or_(
-                Issue.title.ilike(f"%{search}%"),
-                Issue.description.ilike(f"%{search}%"),
-                Issue.customer_name.ilike(f"%{search}%"),
-                Issue.customer_email.ilike(f"%{search}%"),
-            )
+# ===================================================================
+#  1.  POST /api/tickets/create
+# ===================================================================
+
+@app.route("/api/tickets/create", methods=["POST"])
+def api_create_ticket():
+    """
+    Create a new support ticket.
+
+    **Request JSON body**::
+
+        {
+            "customer_email": "user@example.com",
+            "subject":        "Cannot log in",
+            "description":    "I get a 403 error every time …",
+            "department_id":  "IT",
+            "priority":       "P1"
+        }
+
+    **Behaviour**
+    1. Validate payload.
+    2. Fetch the matching SLA policy for (department_id, priority).
+    3. Compute exact ``response_by`` and ``resolution_by`` timestamps.
+    4. Run round-robin assignment across agents in the department.
+    5. Persist to Firestore and return the full ticket.
+    """
+    try:
+        # ---- 1. Validate -------------------------------------------------
+        try:
+            payload = request.get_json(force=True)
+        except Exception:
+            return jsonify({"error": "Request body must be valid JSON"}), 400
+
+        try:
+            clean = validate_ticket_create(payload)
+        except ValidationError as exc:
+            return jsonify({"error": "Validation failed", "details": exc.errors}), 400
+
+        db = get_db()
+        now = utcnow()
+
+        # ---- 2. Fetch SLA policy -----------------------------------------
+        policy = get_sla_policy(db, clean["department_id"], clean["priority"])
+        if policy is None:
+            return jsonify({
+                "error": "No SLA policy configured",
+                "details": {
+                    "department_id": clean["department_id"],
+                    "priority": clean["priority"],
+                },
+            }), 422
+
+        # ---- 3. Compute deadlines ----------------------------------------
+        try:
+            response_by, resolution_by = compute_deadlines(policy, now)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 500
+
+        # ---- 4. Round-robin assignment -----------------------------------
+        agent = pick_agent(clean["department_id"])
+        assigned_to = ""
+        assigned_name = ""
+        if agent:
+            assigned_to = agent["id"]
+            assigned_name = agent.get("name", "")
+
+        # ---- 5. Build ticket dict ----------------------------------------
+        ticket_data = TicketModel.from_payload(clean)
+        ticket_data["response_by"] = response_by
+        ticket_data["resolution_by"] = resolution_by
+        ticket_data["assigned_to"] = assigned_to
+        ticket_data["assigned_name"] = assigned_name
+
+        # ---- 6. Persist --------------------------------------------------
+        ticket = TicketService.create_ticket(ticket_data)
+
+        logger.info(
+            "Ticket created – id=%s priority=%s dept=%s assigned_to=%s "
+            "response_by=%s resolution_by=%s",
+            ticket["id"],
+            clean["priority"],
+            clean["department_id"],
+            assigned_name or "unassigned",
+            response_by.isoformat(),
+            resolution_by.isoformat(),
         )
 
-    issues = query.order_by(Issue.created_at.desc()).all()
+        return jsonify({
+            "ticket": TicketModel.serialise(ticket),
+            "sla": {
+                "response_hours": policy.get("response_hours"),
+                "resolution_hours": policy.get("resolution_hours"),
+                "response_by": serialise(response_by),
+                "resolution_by": serialise(resolution_by),
+            },
+        }), 201
 
-    total = Issue.query.count()
-    open_count = Issue.query.filter_by(status="Open").count()
-    in_progress_count = Issue.query.filter_by(status="In Progress").count()
-    resolved_count = Issue.query.filter_by(status="Resolved").count()
-    closed_count = Issue.query.filter_by(status="Closed").count()
-
-    stats = {
-        "total": total,
-        "open": open_count,
-        "in_progress": in_progress_count,
-        "resolved": resolved_count,
-        "closed": closed_count,
-    }
-
-    return render_template(
-        "index.html",
-        issues=issues,
-        stats=stats,
-        status_filter=status_filter,
-        priority_filter=priority_filter,
-        category_filter=category_filter,
-        search=search,
-        statuses=Issue.STATUSES,
-        priorities=Issue.PRIORITIES,
-        categories=Issue.CATEGORIES,
-    )
+    except Exception:
+        logger.exception("POST /api/tickets/create failed")
+        return jsonify({"error": "Internal server error"}), 500
 
 
-@app.route("/issue/new", methods=["GET", "POST"])
-def create_issue():
-    if request.method == "POST":
-        issue = Issue(
-            title=request.form["title"],
-            description=request.form["description"],
-            customer_name=request.form["customer_name"],
-            customer_email=request.form["customer_email"],
-            status=request.form.get("status", "Open"),
-            priority=request.form.get("priority", "Medium"),
-            category=request.form.get("category", "General"),
-            resolution_notes=request.form.get("resolution_notes", ""),
+# ===================================================================
+#  2.  GET /api/tickets/assigned/<agent_id>
+# ===================================================================
+
+@app.route("/api/tickets/assigned/<agent_id>", methods=["GET"])
+def api_tickets_assigned(agent_id):
+    """
+    Return all active (Open / In Progress) tickets assigned to an agent,
+    enriched with the remaining time (in minutes) before each SLA
+    deadline is breached.
+
+    **Response**::
+
+        {
+            "agent": { ... },
+            "tickets": [
+                {
+                    "ticket": { ... },
+                    "sla_remaining": {
+                        "response_minutes": 42,
+                        "resolution_minutes": 210,
+                        "response_breached": false,
+                        "resolution_breached": false,
+                    }
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        agent = AgentService.get_agent(agent_id)
+        if agent is None:
+            return jsonify({"error": "Agent not found"}), 404
+
+        tickets = TicketService.list_active_for_agent(agent_id)
+        now = utcnow()
+
+        enriched = []
+        for t in tickets:
+            resp_mins = _remaining_minutes(t.get("response_by"), now)
+            res_mins = _remaining_minutes(t.get("resolution_by"), now)
+
+            enriched.append({
+                "ticket": TicketModel.serialise(t),
+                "sla_remaining": {
+                    "response_minutes":   resp_mins,
+                    "resolution_minutes": res_mins,
+                    "response_breached":  t.get("response_breached", False),
+                    "resolution_breached": t.get("resolution_breached", False),
+                },
+            })
+
+        return jsonify({
+            "agent": AgentModel.serialise(agent),
+            "tickets": enriched,
+            "count": len(enriched),
+        })
+
+    except Exception:
+        logger.exception("GET /api/tickets/assigned/%s failed", agent_id)
+        return jsonify({"error": "Internal server error"}), 500
+
+
+def _remaining_minutes(deadline, now: datetime) -> int | None:
+    """Return whole minutes remaining until *deadline*, or None."""
+    if deadline is None:
+        return None
+    if isinstance(deadline, datetime):
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+        delta = deadline - now
+        return int(delta.total_seconds() // 60)
+    return None
+
+
+# ===================================================================
+#  3.  GET /api/tickets  (list / filter)
+# ===================================================================
+
+@app.route("/api/tickets", methods=["GET"])
+def api_list_tickets():
+    """List tickets with optional filters (query-string params)."""
+    try:
+        tickets = TicketService.list_tickets(
+            department_id=request.args.get("department_id", ""),
+            status=request.args.get("status", ""),
+            priority=request.args.get("priority", ""),
+            assigned_to=request.args.get("assigned_to", ""),
         )
-        db.session.add(issue)
-        db.session.commit()
-        flash("Issue created successfully.", "success")
-        return redirect(url_for("issue_detail", issue_id=issue.id))
-
-    return render_template(
-        "issue_form.html",
-        issue=None,
-        statuses=Issue.STATUSES,
-        priorities=Issue.PRIORITIES,
-        categories=Issue.CATEGORIES,
-    )
+        return jsonify({
+            "tickets": [TicketModel.serialise(t) for t in tickets],
+            "count": len(tickets),
+        })
+    except Exception:
+        logger.exception("GET /api/tickets failed")
+        return jsonify({"error": "Internal server error"}), 500
 
 
-@app.route("/issue/<int:issue_id>")
-def issue_detail(issue_id):
-    issue = Issue.query.get_or_404(issue_id)
-    return render_template("issue_detail.html", issue=issue)
+# ===================================================================
+#  4.  GET /api/tickets/<ticket_id>
+# ===================================================================
+
+@app.route("/api/tickets/<ticket_id>", methods=["GET"])
+def api_get_ticket(ticket_id):
+    """Fetch a single ticket by its Firestore document ID."""
+    try:
+        ticket = TicketService.get_ticket(ticket_id)
+        if ticket is None:
+            return jsonify({"error": "Ticket not found"}), 404
+        return jsonify({"ticket": TicketModel.serialise(ticket)})
+    except Exception:
+        logger.exception("GET /api/tickets/%s failed", ticket_id)
+        return jsonify({"error": "Internal server error"}), 500
 
 
-@app.route("/issue/<int:issue_id>/edit", methods=["GET", "POST"])
-def edit_issue(issue_id):
-    issue = Issue.query.get_or_404(issue_id)
+# ===================================================================
+#  5.  PATCH /api/tickets/<ticket_id>
+# ===================================================================
 
-    if request.method == "POST":
-        issue.title = request.form["title"]
-        issue.description = request.form["description"]
-        issue.customer_name = request.form["customer_name"]
-        issue.customer_email = request.form["customer_email"]
-        issue.status = request.form["status"]
-        issue.priority = request.form["priority"]
-        issue.category = request.form["category"]
-        issue.resolution_notes = request.form.get("resolution_notes", "")
-        issue.updated_at = datetime.now(timezone.utc)
-        db.session.commit()
-        flash("Issue updated successfully.", "success")
-        return redirect(url_for("issue_detail", issue_id=issue.id))
+@app.route("/api/tickets/<ticket_id>", methods=["PATCH"])
+def api_update_ticket(ticket_id):
+    """Update one or more fields on an existing ticket."""
+    try:
+        payload = request.get_json(force=True)
+        allowed = {
+            "status", "assigned_to", "assigned_name",
+            "subject", "description", "priority",
+        }
+        fields = {k: v for k, v in payload.items() if k in allowed}
+        if not fields:
+            return jsonify({"error": "No valid fields provided"}), 400
 
-    return render_template(
-        "issue_form.html",
-        issue=issue,
-        statuses=Issue.STATUSES,
-        priorities=Issue.PRIORITIES,
-        categories=Issue.CATEGORIES,
-    )
+        # Validate priority if being changed
+        if "priority" in fields:
+            p = fields["priority"].upper()
+            if p not in PRIORITY_CODES:
+                return jsonify({"error": f"Invalid priority. Use {PRIORITY_CODES}"}), 400
+            fields["priority"] = p
 
+        ticket = TicketService.update_ticket(ticket_id, fields)
+        if ticket is None:
+            return jsonify({"error": "Ticket not found"}), 404
+        return jsonify({"ticket": TicketModel.serialise(ticket)})
 
-@app.route("/issue/<int:issue_id>/delete", methods=["POST"])
-def delete_issue(issue_id):
-    issue = Issue.query.get_or_404(issue_id)
-    db.session.delete(issue)
-    db.session.commit()
-    flash("Issue deleted.", "danger")
-    return redirect(url_for("index"))
+    except Exception:
+        logger.exception("PATCH /api/tickets/%s failed", ticket_id)
+        return jsonify({"error": "Internal server error"}), 500
 
 
-@app.route("/analytics")
-def analytics():
-    total = Issue.query.count()
-    by_status = [list(r) for r in db.session.query(Issue.status, db.func.count(Issue.id)).group_by(Issue.status).all()]
-    by_priority = [list(r) for r in db.session.query(Issue.priority, db.func.count(Issue.id)).group_by(Issue.priority).all()]
-    by_category = [list(r) for r in db.session.query(Issue.category, db.func.count(Issue.id)).group_by(Issue.category).all()]
+# ===================================================================
+#  6.  DELETE /api/tickets/<ticket_id>
+# ===================================================================
 
-    today = date.today()
-    last_30_days = Issue.query.filter(Issue.created_at >= datetime.now(timezone.utc) - timedelta(days=30)).count()
-    last_7_days = Issue.query.filter(Issue.created_at >= datetime.now(timezone.utc) - timedelta(days=7)).count()
-
-    return render_template(
-        "analytics.html",
-        total=total,
-        by_status=by_status,
-        by_priority=by_priority,
-        by_category=by_category,
-        last_30_days=last_30_days,
-        last_7_days=last_7_days,
-    )
+@app.route("/api/tickets/<ticket_id>", methods=["DELETE"])
+def api_delete_ticket(ticket_id):
+    """Delete a ticket."""
+    try:
+        deleted = TicketService.delete_ticket(ticket_id)
+        if not deleted:
+            return jsonify({"error": "Ticket not found"}), 404
+        return jsonify({"message": "Ticket deleted"}), 200
+    except Exception:
+        logger.exception("DELETE /api/tickets/%s failed", ticket_id)
+        return jsonify({"error": "Internal server error"}), 500
 
 
-@app.route("/api/issues")
-def api_issues():
-    issues = Issue.query.order_by(Issue.created_at.desc()).all()
-    return jsonify([{
-        "id": i.id,
-        "title": i.title,
-        "customer_name": i.customer_name,
-        "status": i.status,
-        "priority": i.priority,
-        "category": i.category,
-        "created_at": i.created_at.isoformat(),
-    } for i in issues])
+# ===================================================================
+#  7.  GET /api/departments
+# ===================================================================
+
+@app.route("/api/departments", methods=["GET"])
+def api_list_departments():
+    """List all departments."""
+    try:
+        depts = DepartmentService.list_departments()
+        return jsonify({"departments": depts, "count": len(depts)})
+    except Exception:
+        logger.exception("GET /api/departments failed")
+        return jsonify({"error": "Internal server error"}), 500
 
 
-with app.app_context():
-    db.create_all()
+# ===================================================================
+#  8.  GET /api/sla/<department_id>
+# ===================================================================
 
+@app.route("/api/sla/<department_id>", methods=["GET"])
+def api_sla_policies(department_id):
+    """Return all SLA policies for a given department."""
+    try:
+        policies = SLAPolicyService.list_policies(department_id)
+        return jsonify({
+            "department_id": department_id,
+            "policies": [serialise(p) for p in policies],
+            "count": len(policies),
+        })
+    except Exception:
+        logger.exception("GET /api/sla/%s failed", department_id)
+        return jsonify({"error": "Internal server error"}), 500
+
+
+# ===================================================================
+#  9.  GET /api/stats
+# ===================================================================
+
+@app.route("/api/stats", methods=["GET"])
+def api_stats():
+    """Aggregate ticket counts by status."""
+    try:
+        return jsonify(TicketService.get_stats())
+    except Exception:
+        logger.exception("GET /api/stats failed")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+# ===================================================================
+#  10. Agent CRUD
+# ===================================================================
+
+@app.route("/api/agents", methods=["GET"])
+def api_list_agents():
+    """List agents, optionally filtered by department_id."""
+    try:
+        dept = request.args.get("department_id", "")
+        agents = AgentService.list_agents(department_id=dept)
+        return jsonify({
+            "agents": [AgentModel.serialise(a) for a in agents],
+            "count": len(agents),
+        })
+    except Exception:
+        logger.exception("GET /api/agents failed")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/agents", methods=["POST"])
+def api_create_agent():
+    """Create a new agent."""
+    try:
+        try:
+            payload = request.get_json(force=True)
+        except Exception:
+            return jsonify({"error": "Request body must be valid JSON"}), 400
+
+        try:
+            clean = validate_agent_create(payload)
+        except ValidationError as exc:
+            return jsonify({"error": "Validation failed", "details": exc.errors}), 400
+
+        agent_data = AgentModel.from_payload(clean)
+        agent = AgentService.create_agent(agent_data)
+        return jsonify({"agent": AgentModel.serialise(agent)}), 201
+
+    except Exception:
+        logger.exception("POST /api/agents failed")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+# ===================================================================
+#  11. POST /api/init  – re-seed on demand
+# ===================================================================
+
+@app.route("/api/init", methods=["POST"])
+def api_init():
+    """Re-run the seed process (departments + SLA policies)."""
+    try:
+        db = get_db()
+        seed_defaults(db)
+        return jsonify({"message": "Seed complete"}), 200
+    except Exception:
+        logger.exception("POST /api/init failed")
+        return jsonify({"error": "Seed failed"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Local dev server
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000)),
+        debug=False,
+    )

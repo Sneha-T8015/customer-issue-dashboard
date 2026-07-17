@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Agents - Helpdesk{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Support Agents</h1>
+    <a href="{{ url_for('create_agent') }}" class="btn btn-primary">+ New Agent</a>
+</div>
+
+{% if agents %}
+<div class="issue-table">
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for agent in agents %}
+            <tr>
+                <td><strong>{{ agent.name }}</strong></td>
+                <td>{{ agent.email }}</td>
+                <td><span class="badge badge-category">{{ agent.role }}</span></td>
+                <td>
+                    {% if agent.active %}
+                    <span class="badge badge-resolved">Active</span>
+                    {% else %}
+                    <span class="badge badge-closed">Inactive</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ url_for('edit_agent', agent_id=agent.id) }}" class="btn btn-outline btn-sm">Edit</a>
+                    <form method="POST" action="{{ url_for('delete_agent', agent_id=agent.id) }}" style="display:inline" onsubmit="return confirm('Delete this agent?')">
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No agents configured yet.</p>
+    <a href="{{ url_for('create_agent') }}" class="btn btn-primary">Add your first agent</a>
+</div>
+{% endif %}
+{% endblock %}

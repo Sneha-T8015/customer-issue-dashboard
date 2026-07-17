@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Analytics - Issue Tracker{% endblock %}
+{% block title %}Analytics - Helpdesk{% endblock %}
 
 {% block content %}
 <h1 style="margin-bottom:1.5rem">Analytics</h1>
@@ -7,7 +7,7 @@
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-number">{{ total }}</div>
-        <div class="stat-label">Total Issues</div>
+        <div class="stat-label">Total Tickets</div>
     </div>
     <div class="stat-card stat-open">
         <div class="stat-number">{{ last_30_days }}</div>
@@ -21,15 +21,15 @@
 
 <div class="analytics-grid">
     <div class="chart-card">
-        <h3>Issues by Status</h3>
+        <h3>Tickets by Status</h3>
         <canvas id="statusChart"></canvas>
     </div>
     <div class="chart-card">
-        <h3>Issues by Priority</h3>
+        <h3>Tickets by Priority</h3>
         <canvas id="priorityChart"></canvas>
     </div>
     <div class="chart-card">
-        <h3>Issues by Category</h3>
+        <h3>Tickets by Category</h3>
         <canvas id="categoryChart"></canvas>
     </div>
 </div>

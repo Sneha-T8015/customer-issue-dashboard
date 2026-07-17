@@ -1,13 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - Issue Tracker{% endblock %}
+{% block title %}Dashboard - Helpdesk{% endblock %}
 
 {% block content %}
-<h1 style="margin-bottom:1.5rem">Customer Issue Dashboard</h1>
+<h1 style="margin-bottom:1.5rem">Customer Support Dashboard</h1>
 
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-number">{{ stats.total }}</div>
-        <div class="stat-label">Total Issues</div>
+        <div class="stat-label">Total Tickets</div>
     </div>
     <div class="stat-card stat-open">
         <div class="stat-number">{{ stats.open }}</div>
@@ -79,19 +79,21 @@
                 <th>Category</th>
                 <th>Priority</th>
                 <th>Status</th>
+                <th>Assigned To</th>
                 <th>Created</th>
             </tr>
         </thead>
         <tbody>
             {% for issue in issues %}
             <tr>
-                <td>#{{ issue.id }}</td>
+                <td class="ticket-id">{{ issue.id[:8] }}</td>
                 <td><a href="{{ url_for('issue_detail', issue_id=issue.id) }}">{{ issue.title }}</a></td>
                 <td>{{ issue.customer_name }}</td>
                 <td>{{ issue.category }}</td>
                 <td><span class="badge badge-{{ issue.priority|lower }}">{{ issue.priority }}</span></td>
                 <td><span class="badge badge-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span></td>
-                <td>{{ issue.created_at.strftime('%b %d, %Y') }}</td>
+                <td>{{ issue.assigned_to if issue.assigned_to else '—' }}</td>
+                <td>{% if issue.created_at %}{{ issue.created_at.strftime('%b %d, %Y') if issue.created_at is string else issue.created_at }}{% endif %}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -99,8 +101,8 @@
 </div>
 {% else %}
 <div class="empty-state">
-    <p>No issues found.</p>
-    <a href="{{ url_for('create_issue') }}" class="btn btn-primary">Create your first issue</a>
+    <p>No tickets found.</p>
+    <a href="{{ url_for('create_issue') }}" class="btn btn-primary">Create your first ticket</a>
 </div>
 {% endif %}
 {% endblock %}

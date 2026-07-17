@@ -3,19 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Customer Issue Dashboard{% endblock %}</title>
+    <title>{% block title %}Helpdesk Dashboard{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <nav class="navbar">
         <div class="nav-brand">
-            <a href="{{ url_for('index') }}">Issue Tracker</a>
+            <a href="{{ url_for('index') }}">Helpdesk</a>
         </div>
         <div class="nav-links">
-            <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Dashboard</a>
+            <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Tickets</a>
             <a href="{{ url_for('analytics') }}" class="{% if request.endpoint == 'analytics' %}active{% endif %}">Analytics</a>
-            <a href="{{ url_for('create_issue') }}" class="btn btn-primary btn-sm">+ New Issue</a>
+            <a href="{{ url_for('agents_list') }}" class="{% if request.endpoint in ('agents_list', 'create_agent', 'edit_agent') %}active{% endif %}">Agents</a>
+            <a href="{{ url_for('create_issue') }}" class="btn btn-primary btn-sm">+ New Ticket</a>
         </div>
     </nav>
 

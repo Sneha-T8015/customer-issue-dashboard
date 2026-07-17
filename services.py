@@ -1,0 +1,232 @@
+"""
+services.py
+-----------
+Firestore service layer.
+
+All Firestore reads and writes are isolated behind static methods so
+that the Flask routes never touch the SDK directly.
+"""
+
+import logging
+from datetime import datetime, timezone
+from typing import Optional
+
+from firebase_admin import firestore
+
+from firebase_config import (
+    get_db,
+    DEPARTMENTS_COLLECTION,
+    SLA_POLICIES_COLLECTION,
+    TICKETS_COLLECTION,
+    AGENTS_COLLECTION,
+)
+from models import utcnow, doc_to_dict
+
+logger = logging.getLogger(__name__)
+
+
+# =========================================================================
+# Department Service
+# =========================================================================
+
+class DepartmentService:
+    """CRUD helpers for the ``departments`` collection."""
+
+    @staticmethod
+    def list_departments() -> list[dict]:
+        db = get_db()
+        docs = db.collection(DEPARTMENTS_COLLECTION).order_by("name").stream()
+        return [doc_to_dict(d) for d in docs]
+
+    @staticmethod
+    def get_department(dept_id: str) -> Optional[dict]:
+        db = get_db()
+        return doc_to_dict(
+            db.collection(DEPARTMENTS_COLLECTION).document(dept_id).get()
+        )
+
+
+# =========================================================================
+# SLA Policy Service
+# =========================================================================
+
+class SLAPolicyService:
+    """CRUD helpers for the ``sla_policies`` collection."""
+
+    @staticmethod
+    def list_policies(department_id: str = "") -> list[dict]:
+        db = get_db()
+        query = db.collection(SLA_POLICIES_COLLECTION)
+        if department_id:
+            query = query.where("department_id", "==", department_id)
+        docs = query.stream()
+        return [doc_to_dict(d) for d in docs]
+
+    @staticmethod
+    def get_policy(department_id: str, priority: str) -> Optional[dict]:
+        db = get_db()
+        docs = (
+            db.collection(SLA_POLICIES_COLLECTION)
+            .where("department_id", "==", department_id)
+            .where("priority", "==", priority)
+            .limit(1)
+            .stream()
+        )
+        for doc in docs:
+            return doc_to_dict(doc)
+        return None
+
+
+# =========================================================================
+# Ticket Service
+# =========================================================================
+
+class TicketService:
+    """CRUD helpers for the ``tickets`` collection."""
+
+    @staticmethod
+    def create_ticket(data: dict) -> dict:
+        """Insert a new ticket document.  *data* must already contain
+        SLA deadline fields set by the caller."""
+        db = get_db()
+        ref = db.collection(TICKETS_COLLECTION).add(data)
+        ticket_id = ref[1].id
+        data["id"] = ticket_id
+        logger.info("Ticket created: %s", ticket_id)
+        return data
+
+    @staticmethod
+    def get_ticket(ticket_id: str) -> Optional[dict]:
+        db = get_db()
+        return doc_to_dict(
+            db.collection(TICKETS_COLLECTION).document(ticket_id).get()
+        )
+
+    @staticmethod
+    def update_ticket(ticket_id: str, fields: dict) -> Optional[dict]:
+        db = get_db()
+        ref = db.collection(TICKETS_COLLECTION).document(ticket_id)
+        if not ref.get().exists:
+            return None
+        fields["updated_at"] = utcnow()
+        ref.update(fields)
+        logger.info("Ticket %s updated – fields: %s", ticket_id, list(fields))
+        return doc_to_dict(ref.get())
+
+    @staticmethod
+    def delete_ticket(ticket_id: str) -> bool:
+        db = get_db()
+        ref = db.collection(TICKETS_COLLECTION).document(ticket_id)
+        if not ref.get().exists:
+            return False
+        ref.delete()
+        logger.info("Ticket deleted: %s", ticket_id)
+        return True
+
+    @staticmethod
+    def list_tickets(
+        department_id: str = "",
+        status: str = "",
+        priority: str = "",
+        assigned_to: str = "",
+        limit: int = 500,
+    ) -> list[dict]:
+        db = get_db()
+        query = db.collection(TICKETS_COLLECTION)
+
+        if department_id:
+            query = query.where("department_id", "==", department_id)
+        if status:
+            query = query.where("status", "==", status)
+        if priority:
+            query = query.where("priority", "==", priority)
+        if assigned_to:
+            query = query.where("assigned_to", "==", assigned_to)
+
+        query = query.order_by(
+            "created_at", direction=firestore.Query.DESCENDING
+        ).limit(limit)
+
+        return [doc_to_dict(d) for d in query.stream()]
+
+    @staticmethod
+    def list_active_for_agent(agent_id: str) -> list[dict]:
+        """Return all Open / In-Progress tickets assigned to *agent_id*."""
+        db = get_db()
+        docs = (
+            db.collection(TICKETS_COLLECTION)
+            .where("assigned_to", "==", agent_id)
+            .where("status", "in", ["Open", "In Progress"])
+            .order_by("priority")
+            .order_by("created_at", direction=firestore.Query.ASCENDING)
+            .stream()
+        )
+        return [doc_to_dict(d) for d in docs]
+
+    @staticmethod
+    def get_stats() -> dict:
+        db = get_db()
+        all_tickets = list(db.collection(TICKETS_COLLECTION).stream())
+        counts: dict[str, int] = {}
+        for t in all_tickets:
+            s = t.to_dict().get("status", "Unknown")
+            counts[s] = counts.get(s, 0) + 1
+        return {
+            "total":        len(all_tickets),
+            "open":         counts.get("Open", 0),
+            "in_progress":  counts.get("In Progress", 0),
+            "resolved":     counts.get("Resolved", 0),
+            "closed":       counts.get("Closed", 0),
+        }
+
+
+# =========================================================================
+# Agent Service
+# =========================================================================
+
+class AgentService:
+    """CRUD helpers for the ``agents`` collection."""
+
+    @staticmethod
+    def create_agent(data: dict) -> dict:
+        db = get_db()
+        ref = db.collection(AGENTS_COLLECTION).add(data)
+        data["id"] = ref[1].id
+        logger.info("Agent created: %s", data["id"])
+        return data
+
+    @staticmethod
+    def get_agent(agent_id: str) -> Optional[dict]:
+        db = get_db()
+        return doc_to_dict(
+            db.collection(AGENTS_COLLECTION).document(agent_id).get()
+        )
+
+    @staticmethod
+    def list_agents(department_id: str = "") -> list[dict]:
+        db = get_db()
+        query = db.collection(AGENTS_COLLECTION)
+        if department_id:
+            query = query.where("department_id", "==", department_id)
+        docs = query.order_by("name").stream()
+        return [doc_to_dict(d) for d in docs]
+
+    @staticmethod
+    def update_agent(agent_id: str, fields: dict) -> Optional[dict]:
+        db = get_db()
+        ref = db.collection(AGENTS_COLLECTION).document(agent_id)
+        if not ref.get().exists:
+            return None
+        fields["updated_at"] = utcnow()
+        ref.update(fields)
+        return doc_to_dict(ref.get())
+
+    @staticmethod
+    def delete_agent(agent_id: str) -> bool:
+        db = get_db()
+        ref = db.collection(AGENTS_COLLECTION).document(agent_id)
+        if not ref.get().exists:
+            return False
+        ref.delete()
+        logger.info("Agent deleted: %s", agent_id)
+        return True
