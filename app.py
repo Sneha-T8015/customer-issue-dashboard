@@ -41,8 +41,11 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, request, render_template, redirect, url_for, flash
 from flask_login import current_user
+
+load_dotenv()
 
 # --- Firebase & services ---------------------------------------------------
 from firebase_config import init_firebase, get_db, seed_defaults, PRIORITY_CODES
@@ -111,7 +114,7 @@ def _ensure_bootstrap():
         seed_defaults(db)
         seed_admin_user(db)
         start_escalation_worker(interval_seconds=60)
-        start_email_poller()
+        start_email_poller(interval_seconds=int(os.environ.get("GMAIL_POLL_INTERVAL", "300")))
         app._bootstrapped = True
     except Exception:
         logger.exception("Bootstrap failed – app may be non-functional")
@@ -501,7 +504,7 @@ def issue_detail(issue_id):
 
 
 @app.route("/issues/<issue_id>/edit", methods=["GET", "POST"])
-@admin_required
+@agent_or_admin
 def edit_issue(issue_id):
     ticket = TicketService.get_ticket(issue_id)
     if not ticket:
@@ -509,22 +512,32 @@ def edit_issue(issue_id):
         return redirect(url_for("index"))
     issue = _ticket_to_issue(ticket)
 
+    if current_user.is_agent and issue.get("assigned_to_id") != current_user.agent_id:
+        flash("You are not allowed to edit this ticket.", "danger")
+        return redirect(url_for("issue_detail", issue_id=issue_id))
+
     if request.method == "POST":
         try:
             form = request.form.to_dict()
-            fields = {
-                "subject":         form.get("title", issue["title"]),
-                "description":     form.get("description", ""),
-                "customer_name":   form.get("customer_name", ""),
-                "customer_email":  form.get("customer_email", ""),
-                "mobile_number":   form.get("mobile_number", ""),
-                "enrol_id":        form.get("enrol_id", ""),
-                "status":          form.get("status", issue["status"]),
-                "priority":        form.get("priority", issue["priority"]),
-                "department_id":   form.get("category", issue["category"]),
-                "assigned_to":     form.get("assigned_to", ""),
-                "resolution_notes": form.get("resolution_notes", ""),
-            }
+            if current_user.is_admin:
+                fields = {
+                    "subject":         form.get("title", issue["title"]),
+                    "description":     form.get("description", ""),
+                    "customer_name":   form.get("customer_name", ""),
+                    "customer_email":  form.get("customer_email", ""),
+                    "mobile_number":   form.get("mobile_number", ""),
+                    "enrol_id":        form.get("enrol_id", ""),
+                    "status":          form.get("status", issue["status"]),
+                    "priority":        form.get("priority", issue["priority"]),
+                    "department_id":   form.get("category", issue["category"]),
+                    "assigned_to":     form.get("assigned_to", ""),
+                    "resolution_notes": form.get("resolution_notes", ""),
+                }
+            else:
+                fields = {
+                    "priority":      form.get("priority", issue["priority"]),
+                    "department_id": form.get("category", issue["category"]),
+                }
             TicketService.update_ticket(issue_id, fields)
             flash("Ticket updated.", "success")
             return redirect(url_for("issue_detail", issue_id=issue_id))

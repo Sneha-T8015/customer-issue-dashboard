@@ -55,6 +55,36 @@
                 </select>
             </div>
         </div>
+        {% if issue %}
+        <div class="form-row">
+            <div class="form-group">
+                <label for="status">Status</label>
+                <select id="status" name="status">
+                    {% for s in statuses %}
+                    <option value="{{ s }}" {% if issue.status == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if current_user.is_admin %}
+            <div class="form-group">
+                <label for="assigned_to">Assign To</label>
+                <select id="assigned_to" name="assigned_to">
+                    <option value="">Unassigned</option>
+                    {% for agent in agents %}
+                    <option value="{{ agent.id }}" {% if issue.assigned_to == agent.name %}selected{% endif %}>{{ agent.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if current_user.is_admin %}
+        <div class="form-group">
+            <label for="resolution_notes">Resolution Notes</label>
+            <textarea id="resolution_notes" name="resolution_notes" placeholder="Notes about how this was resolved (optional)">{{ issue.resolution_notes if issue else '' }}</textarea>
+        </div>
+        {% endif %}
+        {% endif %}
 
         {% if issue %}
         <div class="form-row">

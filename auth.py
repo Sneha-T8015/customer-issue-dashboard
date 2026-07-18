@@ -382,11 +382,10 @@ def seed_admin_user(db):
 
     if existing:
         agent_id, data = existing
-        if data.get("password_hash"):
-            logger.info("Admin user %s already exists – skipping seed", admin_email)
-            return
-        # Existing agent without password – upgrade to admin
         db.collection("agents").document(agent_id).update({
+            "email": admin_email,
+            "name": "Admin",
+            "department_id": "IT",
             "password_hash": hash_password(admin_password),
             "role": "admin",
         })

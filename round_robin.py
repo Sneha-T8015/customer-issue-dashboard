@@ -73,11 +73,31 @@ def pick_agent(department_id: str) -> Optional[dict]:
         )
         for doc in docs:
             agent = doc.to_dict()
+            if agent.get("role") == "admin":
+                continue
             agent["id"] = doc.id
             agents.append(agent)
     except Exception:
         logger.exception("Error fetching agents for dept=%s", department_id)
         return None
+
+    if not agents:
+        try:
+            fallback_docs = (
+                db.collection(AGENTS_COLLECTION)
+                .where("active", "==", True)
+                .stream()
+            )
+            agents = []
+            for doc in fallback_docs:
+                agent = doc.to_dict()
+                if agent.get("role") == "admin":
+                    continue
+                agent["id"] = doc.id
+                agents.append(agent)
+        except Exception:
+            logger.exception("Error fetching fallback agents for dept=%s", department_id)
+            return None
 
     if not agents:
         logger.warning("No active agents found for department %s", department_id)

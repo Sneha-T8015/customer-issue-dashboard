@@ -272,7 +272,8 @@ def _create_ticket_from_email(message: dict, admin_user: str):
     }
 
     try:
-        ticket = TicketService.create_ticket(ticket_data)
+        ticket_payload = TicketModel.from_payload(ticket_data)
+        ticket = TicketService.create_ticket(ticket_payload)
         ticket_id = ticket.get("id")
 
         # Auto-assign via round-robin

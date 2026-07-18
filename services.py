@@ -124,12 +124,7 @@ class TicketService:
         db = get_db()
         # Fetch all tickets then filter in Python to avoid Firestore
         # composite index requirements on multi-field queries.
-        docs = (
-            db.collection(TICKETS_COLLECTION)
-            .order_by("created_at", direction=firestore.Query.DESCENDING)
-            .limit(limit)
-            .stream()
-        )
+        docs = db.collection(TICKETS_COLLECTION).stream()
         results = []
         for doc in docs:
             data = doc_to_dict(doc)
@@ -144,7 +139,20 @@ class TicketService:
             if assigned_to and data.get("assigned_to") != assigned_to:
                 continue
             results.append(data)
-        return results
+
+        def _sort_key(ticket: dict):
+            value = ticket.get("created_at") or ticket.get("updated_at")
+            if isinstance(value, str):
+                try:
+                    return datetime.fromisoformat(value)
+                except Exception:
+                    return datetime.min.replace(tzinfo=timezone.utc)
+            if isinstance(value, datetime):
+                return value
+            return datetime.min.replace(tzinfo=timezone.utc)
+
+        results.sort(key=_sort_key, reverse=True)
+        return results[:limit]
 
     @staticmethod
     def list_active_for_agent(agent_id: str) -> list[dict]:
