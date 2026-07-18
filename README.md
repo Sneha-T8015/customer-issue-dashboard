@@ -2,7 +2,7 @@
 
 A full-featured helpdesk ticketing system built with Flask and Firebase Firestore, featuring role-based access control, round-robin auto-assignment, SLA tracking, and Gmail email-to-ticket integration.
 
-![Dashboard](screenshots/dashboard.svg)
+![Dashboard](screenshots/Dashboard.png)
 
 ---
 
@@ -42,7 +42,7 @@ A full-featured helpdesk ticketing system built with Flask and Firebase Firestor
 
 | Login | Dashboard | Ticket Detail |
 |-------|-----------|---------------|
-| ![Login](screenshots/login.svg) | ![Dashboard](screenshots/dashboard.svg) | ![Ticket Detail](screenshots/ticket-detail.svg) |
+| ![Login](screenshots/Login.jpg) | ![Dashboard](screenshots/Analytics.png) | ![Ticket Detail](screenshots/Ticket_edit.jpg) |
 
 ---
 
