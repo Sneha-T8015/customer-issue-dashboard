@@ -878,6 +878,35 @@ def api_init():
         return jsonify({"error": "Seed failed"}), 500
 
 
+@app.route("/api/test-gmail")
+@admin_required
+def test_gmail():
+    """Debug endpoint: test Gmail API connection and poll for emails now."""
+    from email_service import _build_gmail_service, check_new_emails
+    import os
+    service = _build_gmail_service()
+    if service is None:
+        return jsonify({
+            "status": "error",
+            "message": "Gmail service could not be built. Check GMAIL_CREDENTIALS_JSON and GMAIL_TOKEN_JSON env vars.",
+            "has_credentials_json": bool(os.environ.get("GMAIL_CREDENTIALS_JSON")),
+            "has_token_json": bool(os.environ.get("GMAIL_TOKEN_JSON")),
+        }), 500
+
+    try:
+        admin_user = os.environ.get("GMAIL_ADMIN_USER", "snehathangaraj5@gmail.com")
+        profile = service.users().getProfile(userId=admin_user).execute()
+        count = check_new_emails()
+        return jsonify({
+            "status": "ok",
+            "email": profile.get("emailAddress"),
+            "messages_total": profile.get("messagesTotal"),
+            "new_tickets_created": count,
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ---------------------------------------------------------------------------
 # Local dev server
 # ---------------------------------------------------------------------------
