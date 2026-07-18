@@ -122,17 +122,29 @@ class TicketService:
         limit: int = 500,
     ) -> list[dict]:
         db = get_db()
-        query = db.collection(TICKETS_COLLECTION)
-        if department_id:
-            query = query.where("department_id", "==", department_id)
-        if status:
-            query = query.where("status", "==", status)
-        if priority:
-            query = query.where("priority", "==", priority)
-        if assigned_to:
-            query = query.where("assigned_to", "==", assigned_to)
-        query = query.order_by("created_at", direction=firestore.Query.DESCENDING).limit(limit)
-        return [doc_to_dict(d) for d in query.stream()]
+        # Fetch all tickets then filter in Python to avoid Firestore
+        # composite index requirements on multi-field queries.
+        docs = (
+            db.collection(TICKETS_COLLECTION)
+            .order_by("created_at", direction=firestore.Query.DESCENDING)
+            .limit(limit)
+            .stream()
+        )
+        results = []
+        for doc in docs:
+            data = doc_to_dict(doc)
+            if not data:
+                continue
+            if department_id and data.get("department_id") != department_id:
+                continue
+            if status and data.get("status") != status:
+                continue
+            if priority and data.get("priority") != priority:
+                continue
+            if assigned_to and data.get("assigned_to") != assigned_to:
+                continue
+            results.append(data)
+        return results
 
     @staticmethod
     def list_active_for_agent(agent_id: str) -> list[dict]:
@@ -140,11 +152,15 @@ class TicketService:
         docs = (
             db.collection(TICKETS_COLLECTION)
             .where("assigned_to", "==", agent_id)
-            .where("status", "in", ["Open", "In Progress"])
-            .order_by("created_at", direction=firestore.Query.ASCENDING)
             .stream()
         )
-        return [doc_to_dict(d) for d in docs]
+        results = []
+        for doc in docs:
+            data = doc_to_dict(doc)
+            if data and data.get("status") in ("Open", "In Progress"):
+                results.append(data)
+        results.sort(key=lambda x: x.get("created_at", ""), reverse=False)
+        return results
 
     @staticmethod
     def get_stats() -> dict:

@@ -12,6 +12,7 @@
     <table>
         <thead>
             <tr>
+                <th>Agent ID</th>
                 <th>Name</th>
                 <th>Email</th>
                 <th>Department</th>
@@ -22,6 +23,7 @@
         <tbody>
             {% for agent in agents %}
             <tr>
+                <td><code>{{ agent.agent_id[:8] }}</code></td>
                 <td><strong>{{ agent.name }}</strong></td>
                 <td>{{ agent.email }}</td>
                 <td><span class="badge badge-category">{{ agent.role }}</span></td>

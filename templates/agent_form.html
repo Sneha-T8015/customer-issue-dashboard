@@ -24,6 +24,17 @@
             </select>
         </div>
 
+        <div class="form-group">
+            <label for="new_password">{{ 'Reset Password' if agent else 'Set Password' }}</label>
+            <input type="password" id="new_password" name="new_password"
+                   placeholder="{{ 'Leave blank to keep current password' if agent else 'At least 6 characters' }}">
+            {% if agent %}
+            <small style="color:var(--text-muted);font-size:0.75rem;margin-top:0.25rem;display:block">
+                Leave blank to keep the current password. Enter a new value to reset it.
+            </small>
+            {% endif %}
+        </div>
+
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">{{ 'Update' if agent else 'Create' }} Agent</button>
             <a href="{{ url_for('agents_list') }}" class="btn btn-outline">Cancel</a>

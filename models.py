@@ -92,6 +92,9 @@ class TicketModel:
         now = utcnow()
         return {
             "customer_email":      str(data["customer_email"]).strip().lower(),
+            "customer_name":       str(data.get("customer_name", "")).strip(),
+            "mobile_number":       str(data.get("mobile_number", "")).strip(),
+            "enrol_id":            str(data.get("enrol_id", "")).strip(),
             "subject":             str(data["subject"]).strip(),
             "description":         str(data["description"]).strip(),
             "department_id":       str(data["department_id"]).strip(),
@@ -103,6 +106,10 @@ class TicketModel:
             "resolution_by":       None,   # set by SLA calc
             "response_breached":   False,
             "resolution_breached": False,
+            "source":              str(data.get("source", "manual")).strip(),
+            "gmail_message_id":    str(data.get("gmail_message_id", "")).strip(),
+            "email_date":          data.get("email_date"),
+            "attachment_count":    int(data.get("attachment_count", 0)),
             "created_at":          now,
             "updated_at":          now,
         }

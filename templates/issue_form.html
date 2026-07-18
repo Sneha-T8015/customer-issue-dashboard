@@ -28,6 +28,17 @@
 
         <div class="form-row">
             <div class="form-group">
+                <label for="mobile_number">Mobile Number</label>
+                <input type="tel" id="mobile_number" name="mobile_number" value="{{ issue.mobile_number if issue else '' }}" placeholder="+91 XXXXX XXXXX">
+            </div>
+            <div class="form-group">
+                <label for="enrol_id">Enrol ID</label>
+                <input type="text" id="enrol_id" name="enrol_id" value="{{ issue.enrol_id if issue else '' }}" placeholder="Enrolment ID">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
                 <label for="priority">Priority</label>
                 <select id="priority" name="priority">
                     {% for p in priorities %}

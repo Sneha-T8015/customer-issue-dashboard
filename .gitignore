@@ -8,3 +8,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 serviceAccountKey.json
+Credentials.json
+gmail_token.json
+token.json
+.env

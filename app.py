@@ -42,6 +42,7 @@ import os
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request, render_template, redirect, url_for, flash
+from flask_login import current_user
 
 # --- Firebase & services ---------------------------------------------------
 from firebase_config import init_firebase, get_db, seed_defaults, PRIORITY_CODES
@@ -64,6 +65,15 @@ from validators import (
     validate_agent_create,
     ValidationError,
 )
+from auth import (
+    login_manager,
+    register_auth_routes,
+    seed_admin_user,
+    login_required,
+    admin_required,
+    agent_or_admin,
+)
+from email_service import start_email_poller
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -80,6 +90,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key-change-me")
 
+# Flask-Login
+login_manager.init_app(app)
+register_auth_routes(app)
+
 STATUSES = ["Open", "In Progress", "Resolved", "Closed"]
 DEPARTMENT_FALLBACKS = ["IT", "software", "billing", "learning_kit"]
 
@@ -95,7 +109,9 @@ def _ensure_bootstrap():
     try:
         db = init_firebase()
         seed_defaults(db)
+        seed_admin_user(db)
         start_escalation_worker(interval_seconds=60)
+        start_email_poller()
         app._bootstrapped = True
     except Exception:
         logger.exception("Bootstrap failed – app may be non-functional")
@@ -116,12 +132,16 @@ def _ticket_to_issue(ticket):
         "title":            ticket.get("subject") or ticket.get("title") or "Untitled",
         "customer_name":    ticket.get("customer_name") or (email.split("@", 1)[0] if email else "Customer"),
         "customer_email":   email,
+        "mobile_number":    ticket.get("mobile_number") or "",
+        "enrol_id":         ticket.get("enrol_id") or "",
         "category":         ticket.get("department_id") or ticket.get("category") or "General",
         "priority":         ticket.get("priority") or "P3",
         "status":           ticket.get("status") or "Open",
         "assigned_to":      ticket.get("assigned_name") or ticket.get("assigned_to") or "",
-        "created_at":       ticket.get("created_at"),
-        "updated_at":       ticket.get("updated_at"),
+        "assigned_to_id":   ticket.get("assigned_to") or "",
+        "source":           ticket.get("source") or "manual",
+        "created_at":       _serialize_dates(ticket.get("created_at")),
+        "updated_at":       _serialize_dates(ticket.get("updated_at")),
         "description":      ticket.get("description") or "",
         "resolution_notes": ticket.get("resolution_notes") or "",
     }
@@ -131,11 +151,12 @@ def _agent_to_ui(agent):
     if not agent:
         return None
     return {
-        "id":     agent.get("id"),
-        "name":   agent.get("name") or "Agent",
-        "email":  agent.get("email") or "",
-        "role":   agent.get("department_id") or "Agent",
-        "active": agent.get("active", True),
+        "id":        agent.get("id"),
+        "agent_id":  agent.get("id"),
+        "name":      agent.get("name") or "Agent",
+        "email":     agent.get("email") or "",
+        "role":      agent.get("department_id") or "Agent",
+        "active":    agent.get("active", True),
     }
 
 
@@ -169,9 +190,16 @@ def _build_stats(issues):
 
 
 def _serialize_dates(obj):
-    """Recursively convert datetime objects to ISO strings."""
+    """Recursively convert datetime-like values to ISO strings."""
+    if obj is None:
+        return None
     if isinstance(obj, datetime):
         return obj.isoformat()
+    if hasattr(obj, "to_datetime"):
+        try:
+            return obj.to_datetime().isoformat()
+        except Exception:
+            pass
     if isinstance(obj, dict):
         return {k: _serialize_dates(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -205,6 +233,7 @@ def server_error(e):
 # ===================================================================
 
 @app.route("/")
+@login_required
 def index():
     status_filter = request.args.get("status", "")
     priority_filter = request.args.get("priority", "")
@@ -219,6 +248,11 @@ def index():
             kwargs["priority"] = priority_filter
         if category_filter:
             kwargs["department_id"] = category_filter
+
+        # RBAC: agents only see tickets assigned to them
+        if current_user.is_agent and current_user.agent_id:
+            kwargs["assigned_to"] = current_user.agent_id
+
         tickets = TicketService.list_tickets(limit=500, **kwargs)
         issues = [_ticket_to_issue(t) for t in tickets]
 
@@ -255,6 +289,7 @@ def index():
 # ===================================================================
 
 @app.route("/analytics")
+@admin_required
 def analytics():
     try:
         tickets = TicketService.list_tickets(limit=1000)
@@ -290,17 +325,30 @@ def analytics():
 # ===================================================================
 
 @app.route("/agents")
+@admin_required
 def agents_list():
     return render_template("agents.html", agents=_agent_list())
 
 
 @app.route("/agents/create", methods=["GET", "POST"])
+@admin_required
 def create_agent():
     if request.method == "POST":
         try:
             data = validate_agent_create(request.form.to_dict())
             agent_data = AgentModel.from_payload(data)
-            AgentService.create_agent(agent_data)
+            # Set password if provided, otherwise use a default
+            password = (request.form.get("new_password") or "").strip()
+            if password:
+                if len(password) < 6:
+                    flash("Password must be at least 6 characters.", "danger")
+                    return render_template("agent_form.html", agent=None, departments=_dept_options())
+            else:
+                password = "changeme123"
+            created = AgentService.create_agent(agent_data)
+            # Set the password hash on the newly created agent
+            from auth import set_password
+            set_password(created["id"], password)
             flash("Agent created successfully.", "success")
             return redirect(url_for("agents_list"))
         except ValidationError as exc:
@@ -312,6 +360,7 @@ def create_agent():
 
 
 @app.route("/agents/<agent_id>/edit", methods=["GET", "POST"])
+@admin_required
 def edit_agent(agent_id):
     agent = AgentService.get_agent(agent_id)
     if not agent:
@@ -326,6 +375,15 @@ def edit_agent(agent_id):
                 "email": clean["email"],
                 "department_id": clean["department_id"],
             })
+            # Update password if provided
+            new_password = (request.form.get("new_password") or "").strip()
+            if new_password:
+                from auth import set_password
+                if len(new_password) < 6:
+                    flash("Password must be at least 6 characters.", "danger")
+                    return render_template("agent_form.html", agent=ui, departments=_dept_options())
+                set_password(agent_id, new_password)
+                flash(f"Password updated for {clean['name']}.", "success")
             flash("Agent updated.", "success")
             return redirect(url_for("agents_list"))
         except ValidationError as exc:
@@ -337,6 +395,7 @@ def edit_agent(agent_id):
 
 
 @app.route("/agents/<agent_id>/delete", methods=["POST"])
+@admin_required
 def delete_agent(agent_id):
     try:
         AgentService.delete_agent(agent_id)
@@ -352,6 +411,7 @@ def delete_agent(agent_id):
 # ===================================================================
 
 @app.route("/issues/new", methods=["GET", "POST"])
+@admin_required
 def create_issue():
     if request.method == "POST":
         try:
@@ -388,6 +448,8 @@ def create_issue():
             ticket_data["assigned_name"] = assigned_name
             # Carry optional form fields
             ticket_data["customer_name"] = form.get("customer_name", "")
+            ticket_data["mobile_number"] = form.get("mobile_number", "")
+            ticket_data["enrol_id"] = form.get("enrol_id", "")
             ticket_data["resolution_notes"] = form.get("resolution_notes", "")
 
             ticket = TicketService.create_ticket(ticket_data)
@@ -411,6 +473,7 @@ def create_issue():
 
 
 @app.route("/issues/<issue_id>")
+@agent_or_admin
 def issue_detail(issue_id):
     try:
         ticket = TicketService.get_ticket(issue_id)
@@ -418,7 +481,12 @@ def issue_detail(issue_id):
             flash("Ticket not found.", "danger")
             return redirect(url_for("index"))
         issue = _ticket_to_issue(ticket)
-        comments = CommentService.list_comments(issue_id)
+        raw_comments = CommentService.list_comments(issue_id)
+        comments = []
+        for c in raw_comments:
+            cc = dict(c)
+            cc["created_at"] = _serialize_dates(cc.get("created_at"))
+            comments.append(cc)
         return render_template(
             "issue_detail.html",
             issue=issue,
@@ -433,6 +501,7 @@ def issue_detail(issue_id):
 
 
 @app.route("/issues/<issue_id>/edit", methods=["GET", "POST"])
+@admin_required
 def edit_issue(issue_id):
     ticket = TicketService.get_ticket(issue_id)
     if not ticket:
@@ -448,6 +517,8 @@ def edit_issue(issue_id):
                 "description":     form.get("description", ""),
                 "customer_name":   form.get("customer_name", ""),
                 "customer_email":  form.get("customer_email", ""),
+                "mobile_number":   form.get("mobile_number", ""),
+                "enrol_id":        form.get("enrol_id", ""),
                 "status":          form.get("status", issue["status"]),
                 "priority":        form.get("priority", issue["priority"]),
                 "department_id":   form.get("category", issue["category"]),
@@ -472,6 +543,7 @@ def edit_issue(issue_id):
 
 
 @app.route("/issues/<issue_id>/delete", methods=["POST"])
+@admin_required
 def delete_issue(issue_id):
     try:
         TicketService.delete_ticket(issue_id)
@@ -483,6 +555,7 @@ def delete_issue(issue_id):
 
 
 @app.route("/issues/<issue_id>/status", methods=["POST"])
+@agent_or_admin
 def update_status(issue_id):
     new_status = request.form.get("status", "")
     if new_status not in STATUSES:
@@ -498,6 +571,7 @@ def update_status(issue_id):
 
 
 @app.route("/issues/<issue_id>/assign", methods=["POST"])
+@admin_required
 def assign_ticket(issue_id):
     agent_id = request.form.get("assigned_to", "")
     try:
@@ -516,11 +590,28 @@ def assign_ticket(issue_id):
     return redirect(url_for("issue_detail", issue_id=issue_id))
 
 
+@app.route("/issues/<issue_id>/send-back", methods=["POST"])
+@agent_or_admin
+def send_back_to_admin(issue_id):
+    try:
+        TicketService.update_ticket(issue_id, {
+            "assigned_to":   "",
+            "assigned_name": "",
+            "status":        "Open",
+        })
+        flash("Ticket sent back to admin for reassignment.", "success")
+    except Exception:
+        logger.exception("Send back failed")
+        flash("Failed to send ticket back.", "danger")
+    return redirect(url_for("issue_detail", issue_id=issue_id))
+
+
 # ===================================================================
 #  UI – Comments
 # ===================================================================
 
 @app.route("/issues/<issue_id>/comment", methods=["POST"])
+@agent_or_admin
 def add_comment(issue_id):
     try:
         author = (request.form.get("author") or "").strip()
@@ -542,6 +633,7 @@ def add_comment(issue_id):
 
 
 @app.route("/issues/<issue_id>/comment/<comment_id>/delete", methods=["POST"])
+@agent_or_admin
 def delete_comment(issue_id, comment_id):
     try:
         CommentService.delete_comment(issue_id, comment_id)

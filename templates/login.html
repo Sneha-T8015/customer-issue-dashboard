@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Login - Helpdesk{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <h1>Helpdesk</h1>
+            <p>Sign in to your account</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('login') }}">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required
+                       placeholder="you@company.com" autofocus>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required
+                       placeholder="Enter your password">
+            </div>
+
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="remember" value="1">
+                    Remember me
+                </label>
+            </div>
+
+            <div class="form-actions" style="flex-direction:column">
+                <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">
+                    Sign In
+                </button>
+                <p style="text-align:center;margin-top:1rem;font-size:0.875rem;color:var(--text-muted)">
+                    Don't have an account? <a href="{{ url_for('signup') }}" style="color:var(--primary)">Sign up</a>
+                </p>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

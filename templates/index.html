@@ -79,6 +79,7 @@
                 <th>Department</th>
                 <th>Priority</th>
                 <th>Status</th>
+                <th>Source</th>
                 <th>Assigned To</th>
                 <th>Created</th>
             </tr>
@@ -92,8 +93,15 @@
                 <td><span class="badge badge-category">{{ issue.category }}</span></td>
                 <td><span class="badge badge-priority badge-{{ issue.priority|lower }}">{{ issue.priority }}</span></td>
                 <td><span class="badge badge-{{ issue.status|lower|replace(' ', '-') }}">{{ issue.status }}</span></td>
+                <td>
+                    {% if issue.source == 'email' %}
+                    <span class="badge badge-internal">Email</span>
+                    {% else %}
+                    <span class="badge badge-assigned">Manual</span>
+                    {% endif %}
+                </td>
                 <td>{{ issue.assigned_to if issue.assigned_to else '—' }}</td>
-                <td>{{ issue.created_at[:16] if issue.created_at else '—' }}</td>
+                <td>{{ (issue.created_at[:16]) if issue.created_at is string and issue.created_at else '—' }}</td>
             </tr>
             {% endfor %}
         </tbody>
