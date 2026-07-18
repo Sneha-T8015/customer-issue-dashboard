@@ -305,3 +305,17 @@ customer-issue-dashboard/
 ## License
 
 This project is for educational purposes.
+
+---
+
+## Recent Changes (2026-07-19)
+
+- Agents can now edit a ticket's **Department** and **Priority** from the ticket edit form; agents remain limited to editing tickets assigned to them.
+- Admins retain full edit rights (status, assignment, resolution notes, all fields).
+- Email-to-ticket creation fix: incoming Gmail messages now produce tickets with proper `created_at`/`updated_at` timestamps so they render correctly in the dashboard.
+- Round-robin assignment: admin accounts are excluded from auto-assignment and the algorithm will fall back to any active non-admin agents when a department has no active agents.
+- Gmail poll interval reduced for faster processing (controlled by `GMAIL_POLL_INTERVAL`, default now `60` seconds).
+- Startup/admin seeding: the app now loads environment variables at startup and will update the seeded admin account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` on boot.
+- Debug helper: call the `/api/test-gmail` endpoint (admin-only) to force an immediate Gmail poll and see how many tickets were created.
+
+If you want these notes expanded into a changelog or added as release notes in GitHub, tell me where to put them and I can create a `CHANGELOG.md` or draft a release.
