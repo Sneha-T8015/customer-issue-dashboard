@@ -10,5 +10,7 @@ Thumbs.db
 serviceAccountKey.json
 Credentials.json
 gmail_token.json
+gmail_credentials.json
 token.json
-.env
+app_stderr.log
+app_stdout.log

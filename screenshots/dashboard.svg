@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+  <rect width="800" height="450" fill="#1a1a2e"/>
+  <rect x="0" y="0" width="800" height="50" fill="#16213e"/>
+  <text x="20" y="32" fill="#e94560" font-family="Arial" font-size="18" font-weight="bold">Customer Issue Dashboard</text>
+  <text x="600" y="32" fill="#a0a0b0" font-family="Arial" font-size="14">Admin | Logout</text>
+  <rect x="20" y="70" width="175" height="80" rx="8" fill="#0f3460"/>
+  <text x="40" y="100" fill="#a0a0b0" font-family="Arial" font-size="12">Total Tickets</text>
+  <text x="40" y="130" fill="#e94560" font-family="Arial" font-size="28" font-weight="bold">24</text>
+  <rect x="215" y="70" width="175" height="80" rx="8" fill="#0f3460"/>
+  <text x="235" y="100" fill="#a0a0b0" font-family="Arial" font-size="12">Open</text>
+  <text x="235" y="130" fill="#ffa500" font-family="Arial" font-size="28" font-weight="bold">8</text>
+  <rect x="410" y="70" width="175" height="80" rx="8" fill="#0f3460"/>
+  <text x="430" y="100" fill="#a0a0b0" font-family="Arial" font-size="12">In Progress</text>
+  <text x="430" y="130" fill="#4ecdc4" font-family="Arial" font-size="28" font-weight="bold">10</text>
+  <rect x="605" y="70" width="175" height="80" rx="8" fill="#0f3460"/>
+  <text x="625" y="100" fill="#a0a0b0" font-family="Arial" font-size="12">Resolved</text>
+  <text x="625" y="130" fill="#2ecc71" font-family="Arial" font-size="28" font-weight="bold">6</text>
+  <rect x="20" y="170" width="760" height="260" rx="8" fill="#16213e"/>
+  <text x="40" y="200" fill="#ffffff" font-family="Arial" font-size="14" font-weight="bold">Recent Tickets</text>
+  <line x1="40" y1="215" x2="760" y2="215" stroke="#0f3460" stroke-width="1"/>
+  <text x="40" y="240" fill="#e94560" font-family="Arial" font-size="12">#a1b2c3d4</text>
+  <text x="160" y="240" fill="#ffffff" font-family="Arial" font-size="12">Login page not loading</text>
+  <text x="400" y="240" fill="#ffa500" font-family="Arial" font-size="12">P2</text>
+  <text x="460" y="240" fill="#ffa500" font-family="Arial" font-size="12">Open</text>
+  <text x="560" y="240" fill="#a0a0b0" font-family="Arial" font-size="12">Agent A</text>
+  <text x="40" y="270" fill="#e94560" font-family="Arial" font-size="12">#e5f6g7h8</text>
+  <text x="160" y="270" fill="#ffffff" font-family="Arial" font-size="12">Payment failed</text>
+  <text x="400" y="270" fill="#e94560" font-family="Arial" font-size="12">P1</text>
+  <text x="460" y="270" fill="#4ecdc4" font-family="Arial" font-size="12">In Progress</text>
+  <text x="560" y="270" fill="#a0a0b0" font-family="Arial" font-size="12">Agent B</text>
+  <text x="40" y="300" fill="#e94560" font-family="Arial" font-size="12">#i9j0k1l2</text>
+  <text x="160" y="300" fill="#ffffff" font-family="Arial" font-size="12">Password reset issue</text>
+  <text x="400" y="300" fill="#4ecdc4" font-family="Arial" font-size="12">P3</text>
+  <text x="460" y="300" fill="#2ecc71" font-family="Arial" font-size="12">Resolved</text>
+  <text x="560" y="300" fill="#a0a0b0" font-family="Arial" font-size="12">Agent C</text>
+  <text x="40" y="330" fill="#e94560" font-family="Arial" font-size="12">#m3n4o5p6</text>
+  <text x="160" y="330" fill="#ffffff" font-family="Arial" font-size="12">App crashes on Android</text>
+  <text x="400" y="330" fill="#ffa500" font-family="Arial" font-size="12">P2</text>
+  <text x="460" y="330" fill="#ffa500" font-family="Arial" font-size="12">Open</text>
+  <text x="560" y="330" fill="#a0a0b0" font-family="Arial" font-size="12">Unassigned</text>
+  <text x="400" y="445" fill="#555577" font-family="Arial" font-size="11" font-style="italic">Replace this with an actual screenshot of your dashboard</text>
+</svg>
