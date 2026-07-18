@@ -51,6 +51,10 @@ def _build_gmail_service():
       - OAuth2 user consent (GMAIL_CREDENTIALS_FILE + GMAIL_TOKEN_FILE)
       - Service account (GMAIL_SERVICE_ACCOUNT_KEY)
 
+    For cloud hosting (Render, Railway), set GMAIL_CREDENTIALS_JSON and
+    GMAIL_TOKEN_JSON env vars with inline JSON strings. The function writes
+    them to temporary files for the Gmail client library.
+
     Returns ``None`` when credentials are missing.
     """
     try:
@@ -70,6 +74,38 @@ def _build_gmail_service():
     token_path = os.environ.get("GMAIL_TOKEN_FILE", "gmail_token.json")
     creds_file = os.environ.get("GMAIL_CREDENTIALS_FILE", "gmail_credentials.json")
     sa_key = os.environ.get("GMAIL_SERVICE_ACCOUNT_KEY", "")
+
+    # Cloud hosting: write inline JSON env vars to temp files
+    creds_json_str = os.environ.get("GMAIL_CREDENTIALS_JSON", "")
+    token_json_str = os.environ.get("GMAIL_TOKEN_JSON", "")
+
+    if creds_json_str and not os.path.isfile(creds_file):
+        try:
+            import tempfile, json as _json
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=".json", prefix="gmail_creds_"
+            )
+            tmp.write(_json.dumps(_json.loads(creds_json_str)).encode())
+            tmp.close()
+            creds_file = tmp.name
+            os.environ["GMAIL_CREDENTIALS_FILE"] = creds_file
+            logger.info("Wrote GMAIL_CREDENTIALS_JSON to temp file %s", creds_file)
+        except Exception:
+            logger.exception("Failed to write GMAIL_CREDENTIALS_JSON to temp file")
+
+    if token_json_str and not os.path.isfile(token_path):
+        try:
+            import tempfile, json as _json
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=".json", prefix="gmail_token_"
+            )
+            tmp.write(_json.dumps(_json.loads(token_json_str)).encode())
+            tmp.close()
+            token_path = tmp.name
+            os.environ["GMAIL_TOKEN_FILE"] = token_path
+            logger.info("Wrote GMAIL_TOKEN_JSON to temp file %s", token_path)
+        except Exception:
+            logger.exception("Failed to write GMAIL_TOKEN_JSON to temp file")
 
     # Method 1: OAuth2 token cache
     if os.path.isfile(token_path):

@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: customer-issue-dashboard
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PORT
+        value: 5000
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
+      - key: GMAIL_CREDENTIALS_JSON
+        sync: false
+      - key: GMAIL_TOKEN_JSON
+        sync: false
+      - key: GMAIL_ADMIN_USER
+        value: snehathangaraj5@gmail.com
+      - key: GMAIL_POLL_INTERVAL
+        value: 300
